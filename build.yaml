@@ -1,0 +1,84 @@
+#
+# Simple pre-req prep playbook for OpenShift Installation
+# Used with vanilla Fedora/CentOS, very limited testing.
+#
+# Assumes bastion/deployer node has private IP in eth2, public in eth0.
+# Cluster is reachable via eth2 and the playbooks sets deploy node as default 
+# gateway on all nodes
+#
+#
+#
+---
+- hosts: local
+  gather_facts: yes
+  connection: local
+
+  tasks:
+  - name: debug stuff
+    debug: msg="{{ ansible_eth2['ipv4']['address'] }}"
+
+- hosts: all:!local
+  gather_facts: yes
+
+  tasks:
+  - name: set up DNS via hosts file
+    lineinfile: dest=/etc/hosts regexp='.*\s{{ item }}$' line="{{ hostvars[item].ansible_ssh_host }} {{ item }}" state=present 
+    when: hostvars[item].ansible_ssh_host is defined
+    with_items: "{{ groups.all }}"
+
+  - name: Disable firewalld
+    systemd: name=firewalld state=stopped enabled=no
+
+  - name: debug
+    debug: msg="{{ hostvars['localhost'] }}"
+
+  - name: Ensure default route to bastion exists
+    shell: "route add default gw {{ hostvars['localhost']['ansible_eth2']['ipv4']['address'] }}"
+    when: "'gateway' not in hostvars[inventory_hostname]['ansible_default_ipv4']"
+    
+  - name: Update repos (Fedora)
+    dnf: name=* state=latest
+    when: hostvars[inventory_hostname]['ansible_distribution'] == "Fedora"
+
+  - name: Update repos (RHEL/CentOS)
+    yum: name=* update_cache=true
+    when:  ansible_distribution == 'CentOS' or ansible_distribution == 'Red Hat Enterprise Linux'
+
+  - name: Install Pre-requirements (Fedora)
+    dnf: name={{ item }} state=latest
+    with_items:
+      - python3
+      - python3-devel
+      - NetworkManager
+      - java-1.8.0-openjdk-headless
+    when: hostvars[inventory_hostname]['ansible_distribution'] == "Fedora"
+
+  - name: Install Pre-requirements (CentOS)
+    yum: name={{ item }} state=latest
+    with_items:
+      - NetworkManager
+      - java-1.8.0-openjdk-headless
+    when: ansible_distribution == "CentOS"
+
+  - name: configure NetworkManager
+    lineinfile:
+      dest: "/etc/sysconfig/network-scripts/ifcfg-{{ ansible_default_ipv4['interface'] }}"
+      regexp: '^{{ item }}='
+      line: '{{ item }}=yes'
+      state: present
+      create: yes
+    with_items:
+    - 'USE_PEERDNS'
+    - 'NM_CONTROLLED'
+
+  - name: enable NetworkManager
+    shell: systemctl {{ item }} NetworkManager.service
+    items:
+      - unmask
+      - start
+
+  - name: start NetworkManager
+    service:
+      name: 'NetworkManager'
+      state: started
+      enabled: yes
