@@ -1,0 +1,175 @@
+[OSEv3:vars]
+
+###########################################################################
+### Ansible Vars
+###########################################################################
+timeout=60
+ansible_become=yes
+ansible_ssh_user=root
+
+
+###########################################################################
+### OpenShift Basic Vars
+###########################################################################
+
+#deployment_type=openshift-enterprise
+deployment_type=origin
+containerized=false
+# openshift_metrics_image_version=v3.5
+# openshift_image_tag=v3.5
+# openshift_release=3.5.5.31
+# docker_version="1.12.6"
+
+# default project node selector
+osm_default_node_selector='env=app'
+
+
+###########################################################################
+### OpenShift Optional Vars
+###########################################################################
+
+# Enable cockpit
+osm_use_cockpit=true
+osm_cockpit_plugins=['cockpit-kubernetes']
+
+###########################################################################
+### OpenShift Master Vars
+###########################################################################
+
+openshift_master_api_port=8443
+openshift_master_console_port=8443
+
+openshift_master_cluster_method=native
+openshift_master_cluster_hostname={{ loadbalancer1.address.internal }}
+openshift_master_cluster_public_hostname={{ loadbalancer1.ocp.public.address }}
+openshift_master_default_subdomain=apps.ocp.domain.com
+openshift_master_overwrite_named_certificates=True
+openshift_set_hostname=true
+
+###########################################################################
+### OpenShift Network Vars
+###########################################################################
+
+osm_cluster_network_cidr=10.1.0.0/16
+openshift_portal_net=172.30.0.0/16
+
+os_sdn_network_plugin_name='redhat/openshift-ovs-multitenant'
+#os_sdn_network_plugin_name='redhat/openshift-ovs-subnet'
+
+
+###########################################################################
+### OpenShift Authentication Vars
+###########################################################################
+# htpasswd auth
+openshift_master_identity_providers=[{'name': 'htpasswd_auth', 'login': 'true', 'challenge': 'true', 'kind': 'HTPasswdPasswordIdentityProvider', 'filename': '/etc/origin/master/htpasswd'}]
+# Defining htpasswd users
+# openshift_master_htpasswd_users={'user1': '<pre-hashed password>', 'user2': '<pre-hashed password>'}
+# or
+openshift_master_htpasswd_file=/root/htpasswd.openshift
+
+
+###########################################################################
+### OpenShift Metrics Vars
+###########################################################################
+
+openshift_hosted_metrics_deploy=True
+openshift_hosted_metrics_storage_kind=nfs
+openshift_hosted_metrics_storage_access_modes=['ReadWriteOnce']
+openshift_hosted_metrics_storage_nfs_directory=/srv/nfs
+openshift_hosted_metrics_storage_nfs_options='*(rw,root_squash)'
+openshift_hosted_metrics_storage_volume_name=metrics
+openshift_hosted_metrics_storage_volume_size=10Gi
+
+openshift_hosted_metrics_public_url=https://hawkular-metrics.apps.ocp.domain.com/hawkular/metrics
+
+# (Farid) Had to add this to get metrics 3.6 to work
+openshift_hosted_metrics_deployer_prefix=docker.io/openshift/origin-
+openshift_hosted_metrics_deployer_version=v3.6.0
+
+###########################################################################
+#### OpenShift Logging Vars
+############################################################################
+
+openshift_hosted_logging_deploy=True
+openshift_hosted_logging_storage_kind=nfs
+openshift_hosted_logging_storage_access_modes=['ReadWriteOnce']
+openshift_hosted_logging_storage_nfs_directory=/srv/nfs
+openshift_hosted_logging_storage_nfs_options='*(rw,root_squash)'
+openshift_hosted_logging_storage_volume_name=logging
+openshift_hosted_logging_storage_volume_size=10Gi
+openshift_hosted_logging_hostname=kibana.apps.ocp.domain.com
+openshift_hosted_logging_elasticsearch_cluster_size=1
+openshift_master_logging_public_url=https://kibana.apps.ocp.domain.com
+
+# openshift_hosted_logging_deployer_version=v3.5
+# This one is wrong (down arrow)
+#openshift_hosted_logging_image_version=v3.5
+#openshift_logging_image_version=v3.5
+
+###########################################################################
+### OpenShift Project Management Vars
+###########################################################################
+
+# Configure additional projects
+# openshift_additional_projects={'my-infra-project-test': {'default_node_selector': 'env=infra'}}
+
+###########################################################################
+### OpenShift Router and Registry Vars
+###########################################################################
+
+openshift_hosted_router_selector='env=infra'
+openshift_hosted_router_replicas=2
+# openshift_hosted_router_certificate={"certfile": "/path/to/router.crt", "keyfile": "/path/to/router.key", "cafile": "/path/to/router-ca.crt"}
+
+openshift_hosted_registry_selector='env=infra'
+openshift_hosted_registry_replicas=1
+## FARID openshift_hosted_registry_replicas=2
+openshift_hosted_registry_storage_kind=nfs
+openshift_hosted_registry_storage_access_modes=['ReadWriteMany']
+openshift_hosted_registry_storage_nfs_directory=/srv/nfs
+openshift_hosted_registry_storage_nfs_options='*(rw,root_squash)'
+openshift_hosted_registry_storage_volume_name=registry
+openshift_hosted_registry_storage_volume_size=10Gi
+
+###########################################################################
+#### OpenShift Host Vars
+############################################################################
+[local]
+localhost ansible_connection=local
+
+[OSEv3:children]
+masters
+etcd
+nodes
+new_nodes
+nfs
+lb
+
+[lb]
+loadbalancer1.my-domain.internal host_zone=us-east-1d ansible_ssh_host=192.168.5.12
+
+[masters]
+master1.my-domain.internal host_zone=us-east-1d
+#master2.my-domain.internal host_zone=us-east-1d
+#master3.my-domain.internal host_zone=us-east-1d
+
+[etcd]
+master1.my-domain.internal host_zone=us-east-1d
+#master2.my-domain.internal host_zone=us-east-1d
+#master3.my-domain.internal host_zone=us-east-1d
+
+[nodes]
+## These are the masters
+master1.my-domain.internal ansible_ssh_host=192.168.5.10 openshift_hostname=master1.my-domain.internal openshift_ip=192.168.5.10 ansible_ssh_user=root ansible_ssh_private_key_file=~/.ssh/ocpkey.pem openshift_node_labels="{'logging':'true','openshift_schedulable':'False','cluster': 'my-domain', 'zone': 'us-east-1d'}"
+
+## These are infranodes
+infranode1.my-domain.internal openshift_hostname=infranode1.my-domain.internal ansible_ssh_host=192.168.5.7 openshift_ip=192.168.5.7 ansible_ssh_user=root ansible_ssh_private_key_file=~/.ssh/ocpkey.pem openshift_node_labels="{'logging':'true','cluster': 'my-domain', 'env':'infra', 'zone': 'us-east-1d'}"
+
+## These are regular nodes
+node1.my-domain.internal openshift_hostname=node1.my-domain.internal ansible_ssh_host=192.168.5.9 openshift_ip=192.168.5.9 ansible_ssh_user=root ansible_ssh_private_key_file=~/.ssh/ocpkey.pem openshift_node_labels="{'logging':'true','cluster': 'my-domain', 'env':'app', 'zone': 'us-east-1d'}"
+
+[new_nodes]
+infranode2.my-domain.internal openshift_hostname=infranode2.my-domain.internal ansible_ssh_host=192.168.5.11 openshift_ip=192.168.5.11 ansible_ssh_user=root ansible_ssh_private_key_file=~/.ssh/ocpkey.pem openshift_node_labels="{'logging':'true','cluster': 'my-domain', 'env':'infra', 'zone': 'us-east-1d'}"
+
+[nfs]
+support1.my-domain.internal openshift_hostname=support1.my-domain.internal ansible_ssh_host=192.168.5.12 openshift_ip=192.168.5.12 ansible_ssh_user=root ansible_ssh_private_key_file=~/.ssh/ocpkey.pem
