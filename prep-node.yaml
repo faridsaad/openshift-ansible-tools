@@ -1,0 +1,45 @@
+#
+## Quick playbook to prepare hosts for openshift-ansible deploy
+## - Fill in docker-device to create docker-storage-setup file with proper values. (defaults: /dev/sdf)
+## - Install NetworkManager package
+## - Ensure SELinux is enabled
+## - Optionally reboot at end for SELinux
+##
+## Takes OSEv3 inventory as input host file:
+##     ansible-playbook -i hosts prep-node.yaml --limit 'node1.myenv.internal'
+##
+## Optionally reboot server:
+##     ansible-playbook -i hosts prep-node.yaml --limit 'node1.myenv.internal'  -e 'reboot_host=true'
+##
+##
+#
+
+- hosts: all:!local
+  gather_facts: yes
+  vars:
+     docker-device: sdf
+
+  tasks:
+  - name: Ensure SELinux enabled
+    lineinfile:
+      dest: "/etc/sysconfig/selinux"
+      regexp: '^{{ item.key }}='
+      line: '{{ item.key }}={{ item.value }}'
+      state: present
+      create: yes
+    with_items:
+       - { key: 'SELINUX', value: 'enforcing' }
+       - { key: 'SELINUXTYPE', value: 'targeted' }
+
+  - name: Set up docker storage setup file
+    shell: echo -e 'DEVS=/dev/{{ docker-device }}\nVG=docker-vg'
+
+  - name: Install NetworkManager
+    yum: name="NetworkManager" state=latest
+
+  - name: Restart to enable
+    command: /sbin/shutdown -r +1
+    async: 0
+    poll: 0
+    ignore_errors: true
+    when: reboot_host|default(false) == 'true'
