@@ -1,0 +1,31 @@
+#
+## Playbook to install subscription-manager, and subscribe to the given pool.
+## 
+## Disables all repos and enables only those needed for an OSE installation.
+##
+## Takes OSEv3 inventory as input host file:
+##     ansible-playbook -i hosts subscribe-and-enable-repos.yaml --limit 'node1.myenv.internal'
+##
+## TODO:
+##  - Testing.
+##  - Add username/password requirement option for registration if pool-id is unknown.
+##
+#
+
+- hosts: all:!local
+  gather_facts: yes
+  vars:
+     pool-id: "INVALID!-b3e9-489e-9f4e-REPLACE"
+
+  tasks:
+  - name: Ensure subscription-manager is installed
+    yum: name="subscription-manager" state=latest
+
+  - name: Attach to the appropriate pool-id
+    shell: subscription-manager attach --pool={{ pool-id }}
+
+  - name: Disable all repos
+    shell: subscription-manager repos --disable="*"
+
+  - name: Enable only required repos
+    shell: subscription-manager repos --enable="rhel-7-server-rpms" --enable="rhel-7-server-extras-rpms" --enable="rhel-7-server-ose-3.6-rpms" --enable="rhel-7-fast-datapath-rpms"
