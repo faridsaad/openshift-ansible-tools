@@ -34,6 +34,12 @@
   - name: Set up docker storage setup file
     shell: echo -e 'DEVS=/dev/{{ docker-device }}\nVG=docker-vg'
 
+  - name: Install correct docker version
+    yum: name="docker-1.12.6"
+
+  - name: Enable and start docker
+    service: name=docker state=started enabled=yes
+
   - name: Install NetworkManager
     yum: name="NetworkManager" state=latest
 
