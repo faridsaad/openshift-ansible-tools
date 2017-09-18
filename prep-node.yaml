@@ -43,6 +43,9 @@
   - name: Install NetworkManager
     yum: name="NetworkManager" state=latest
 
+  - name: Create Origin's resolv.conf
+    file: name="/etc/origin/resolv.conf" state=touch
+
   - name: Restart to enable
     command: /sbin/shutdown -r +1
     async: 0

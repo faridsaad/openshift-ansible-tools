@@ -6,6 +6,11 @@
 ## Takes OSEv3 inventory as input host file:
 ##     ansible-playbook -i hosts subscribe-and-enable-repos.yaml --limit 'node1.myenv.internal'
 ##
+## Preparation steps:
+## ansible -i hosts OSEv3 -a 'subscription-manager register --username="username" --password="password"'
+## ansible -i hosts OSEv3 -a 'subscription-manager list --available --matches="*Openshift*"'
+#
+##
 ## TODO:
 ##  - Testing.
 ##  - Add username/password requirement option for registration if pool-id is unknown.
