@@ -28,5 +28,8 @@
     - 'USE_PEERDNS'
     - 'NM_CONTROLLED'
 
+  - name: Enable NetworkManager
+    service: name="NetworkManager" enabled=yes
+
   - name: Create Origin's resolv.conf
     file: name="/etc/origin/resolv.conf" state=touch
