@@ -1,0 +1,32 @@
+#
+### Quick playbook to install and enable SELinux on RHEL servers.
+### Takes OSEv3 inventory as input host file:
+###     ansible-playbook -i hosts enable-networkmanager.yaml --limit 'node1.myenv.internal'
+###
+### Optionally reboot server:
+###     ansible-playbook -i hosts enable-networkmanager.yaml -e 'reboot_host=true'
+###
+###
+##
+#
+
+- hosts: all:!local
+  gather_facts: yes
+  
+  tasks:
+  - name: Install NetworkManager
+    yum: name="NetworkManager" state=latest
+
+  - name: Configure NetworkManager
+    lineinfile:
+      dest: "/etc/sysconfig/network-scripts/ifcfg-{{ ansible_default_ipv4['interface'] }}"
+      regexp: '^{{ item }}='
+      line: '{{ item }}=yes'
+      state: present
+      create: yes
+    with_items:
+    - 'USE_PEERDNS'
+    - 'NM_CONTROLLED'
+
+  - name: Create Origin's resolv.conf
+    file: name="/etc/origin/resolv.conf" state=touch

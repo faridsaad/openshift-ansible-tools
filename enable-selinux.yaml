@@ -1,0 +1,25 @@
+#
+## Quick playbook to enable SELinux on RHEL boxes.
+## Takes OSEv3 inventory as input host file:
+##     ansible-playbook -i hosts enable-selinux.yaml --limit 'node1.myenv.internal'
+##
+## Optionally reboot server:
+##     ansible-playbook -i hosts enable-selinux.yaml -e 'reboot_host=true'
+##
+##
+#
+
+- hosts: all:!local
+  gather_facts: yes
+
+  tasks:
+  - name: Ensure SELinux enabled
+    lineinfile:
+      dest: "/etc/sysconfig/selinux"
+      regexp: '^{{ item.key }}='
+      line: '{{ item.key }}={{ item.value }}'
+      state: present
+      create: yes
+    with_items:
+       - { key: 'SELINUX', value: 'enforcing' }
+       - { key: 'SELINUXTYPE', value: 'targeted' }

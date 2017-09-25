@@ -1,0 +1,29 @@
+#
+## Quick playbook to install docker and set up docker-storage file for LVM.
+##
+## - Fill in docker_device to create docker-storage-setup file with proper values. (defaults: /dev/sdf)
+## - Optionally reboot at the end
+##
+## Takes OSEv3 inventory as input host file:
+##     ansible-playbook -i hosts prep-node.yaml --limit 'node1.myenv.internal'
+##
+## Optionally reboot server:
+##     ansible-playbook -i hosts prep-node.yaml --limit 'node1.myenv.internal'  -e 'reboot_host=true'
+##
+##
+#
+
+- hosts: all:!local
+  gather_facts: yes
+  vars:
+     docker_device: sdf
+
+  tasks:
+  - name: Set up docker-storage-setup file
+    shell: echo -e 'DEVS=/dev/{{ docker_device }}\nVG=docker-vg'
+
+  - name: Install correct docker version
+    yum: name="docker-1.12.6"
+
+  - name: Enable and start docker
+    service: name=docker state=started enabled=yes

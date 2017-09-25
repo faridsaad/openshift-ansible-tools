@@ -13,21 +13,21 @@
 ##
 ## TODO:
 ##  - Testing.
-##  - Add username/password requirement option for registration if pool-id is unknown.
+##  - Add username/password requirement option for registration if pool is unknown.
 ##
 #
 
 - hosts: all:!local
   gather_facts: yes
   vars:
-     pool-id: "INVALID!-b3e9-489e-9f4e-REPLACE"
+   pool: "INVALID!-b3e9-489e-9f4e-REPLACE"
 
   tasks:
   - name: Ensure subscription-manager is installed
     yum: name="subscription-manager" state=latest
 
   - name: Attach to the appropriate pool-id
-    shell: subscription-manager attach --pool={{ pool-id }}
+    shell: subscription-manager attach --pool={{ pool }}
 
   - name: Disable all repos
     shell: subscription-manager repos --disable="*"
