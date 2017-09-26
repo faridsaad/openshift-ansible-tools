@@ -1,0 +1,97 @@
+#
+##
+## !!! IMPORTANT !!!
+## 
+## NOTE: Ensure registration is done prior to running
+## 
+## Preparation steps:
+## 
+## Register machine with RH:
+## ansible -i hosts OSEv3 -a 'subscription-manager register --username="username" --password="password"'
+##
+## Obtain the pool ID for Openshift:
+## ansible -i hosts OSEv3 -a 'subscription-manager list --available --matches="*Openshift*"'
+## 
+## !!!!!!!!!!!!!!!!!
+##
+## prep-node-playbook.yaml: Quick playbook to prepare hosts for openshift-ansible deploy.
+## 
+## - Fills in docker-device to create docker-storage-setup file with proper values. (defaults: /dev/sdf)
+## - Install and enable NetworkManager package
+## - Ensure SELinux is enabled
+## - Optionally reboot at end (required to enable SELinux)
+##
+## Takes OSEv3 inventory as input host file:
+##     ansible-playbook -i hosts prep-node.yaml --limit 'node1.myenv.internal' -e 'pool=POOLID-FROM-COMMAND-ABOVE reboot_host=true'
+##
+## Optionally reboot server:
+##     ansible-playbook -i hosts prep-node.yaml --limit 'node1.myenv.internal'  -e 'pool=POOLID-FROM-COMMAND-ABOVE reboot_host=true'
+##
+##
+#
+
+- hosts: all:!local
+  gather_facts: yes
+  vars:
+     docker_device: sdf
+     pool: "INVALID!-b3e9-489e-9f4e-REPLACE"
+
+  tasks:
+  - name: Ensure subscription-manager is installed
+    yum: name="subscription-manager" state=latest
+
+  - name: Attach to the appropriate pool-id
+    shell: subscription-manager attach --pool={{ pool }}
+
+  - name: Disable all repos
+    shell: subscription-manager repos --disable="*"
+
+  - name: Enable only required repos
+    shell: subscription-manager repos --enable="rhel-7-server-rpms" --enable="rhel-7-server-extras-rpms" --enable="rhel-7-server-ose-3.6-rpms" --enable="rhel-7-fast-datapath-rpms"
+
+  - name: Ensure SELinux enabled
+    lineinfile:
+      dest: "/etc/sysconfig/selinux"
+      regexp: '^{{ item.key }}='
+      line: '{{ item.key }}={{ item.value }}'
+      state: present
+      create: yes
+    with_items:
+       - { key: 'SELINUX', value: 'enforcing' }
+       - { key: 'SELINUXTYPE', value: 'targeted' }
+
+  - name: Set up docker-storage-setup file
+    shell: echo -e 'DEVS=/dev/{{ docker_device }}\nVG=docker-vg'
+
+  - name: Install correct docker version
+    yum: name="docker-1.12.6"
+
+  - name: Enable and start docker
+    service: name=docker state=started enabled=yes
+
+  - name: Install NetworkManager
+    yum: name="NetworkManager" state=latest
+
+  - name: Configure NetworkManager
+    lineinfile:
+      dest: "/etc/sysconfig/network-scripts/ifcfg-{{ ansible_default_ipv4['interface'] }}"
+      regexp: '^{{ item }}='
+      line: '{{ item }}=yes'
+      state: present
+      create: yes
+    with_items:
+    - 'USE_PEERDNS'
+    - 'NM_CONTROLLED'
+
+  - name: Enable NetworkManager
+    service: name="NetworkManager" enabled=yes
+
+  - name: Create Origin's resolv.conf
+    file: name="/etc/origin/resolv.conf" state=touch
+
+  - name: Restart to enable
+    command: /sbin/shutdown -r +1
+    async: 0
+    poll: 0
+    ignore_errors: true
+    when: reboot_host|default(false) == 'true'
