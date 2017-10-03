@@ -20,7 +20,7 @@
 
   tasks:
   - name: Set up docker-storage-setup file
-    shell: echo -e 'DEVS=/dev/{{ docker_device }}\nVG=docker-vg'
+    shell: echo -e 'DEVS=/dev/{{ docker_device }}\nVG=docker-vg' > /etc/sysconfig/docker-storage-setup
 
   - name: Install correct docker version
     yum: name="docker-1.12.6"
