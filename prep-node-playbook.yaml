@@ -33,24 +33,55 @@
 - hosts: all:!local
   gather_facts: yes
   vars:
-     docker_device: sdf
-     pool: "INVALID!-b3e9-489e-9f4e-REPLACE"
+     docker_device: vdb
+     master_pool: "8a85XXX"
+     infra_pool: "8a85XXX"
+     node_pool: "8a85XXX"
+     openshift_version: "3.6"
 
   tasks:
-  - name: Ensure subscription-manager is installed
-    yum: name="subscription-manager" state=latest
+#  - name: Ensure subscription-manager is installed
+#    yum: name="subscription-manager" state=latest
 
-  - name: Attach to the appropriate pool-id
-    shell: subscription-manager attach --pool={{ pool }}
+  - name: Verify if Master attached to proper pool already
+    shell: subscription-manager list --consumed --pool-only|grep {{ master_pool }}
+    when: inventory_hostname | match("^master.*")
+    ignore_errors: true
+    register: master_pool_attached
+
+  - name: Verify if Infra node is attached to proper pool already
+    shell: subscription-manager list --consumed --pool-only|grep {{ infra_pool }}
+    when: inventory_hostname | match("^infra.*")
+    ignore_errors: true
+    register: infra_pool_attached
+
+  - name: Verify if App node attached to proper pool already
+    shell: subscription-manager list --consumed --pool-only|grep {{ node_pool }}
+    when: inventory_hostname | match("^node.*")
+    ignore_errors: true
+    register: node_pool_attached
+
+  - name: Attach Master nodes to the appropriate pool-id
+    shell: subscription-manager attach --pool={{ master_pool }}
+    when: inventory_hostname | match("^master.*") and master_pool_attached.rc != 0
+
+
+  - name: Attach Infra nodes to the appropriate pool-id
+    shell: subscription-manager attach --pool={{ infra_pool }}
+    when: inventory_hostname | match("^infra.*") and infra_pool_attached.rc != 0
+
+  - name: Attach App nodes to the appropriate pool-id
+    shell: subscription-manager attach --pool={{ node_pool }}
+    when: inventory_hostname | match("^node.*") and node_pool_attached.rc != 0
 
   - name: Disable all repos
     shell: subscription-manager repos --disable="*"
 
   - name: Enable only required repos
-    shell: subscription-manager repos --enable="rhel-7-server-rpms" --enable="rhel-7-server-extras-rpms" --enable="rhel-7-server-ose-3.6-rpms" --enable="rhel-7-fast-datapath-rpms"
+    shell: subscription-manager repos --enable="rhel-7-server-rpms" --enable="rhel-7-server-extras-rpms" --enable="rhel-7-server-ose-{{ openshift_version }}-rpms" --enable="rhel-7-fast-datapath-rpms"
 
   - name: Install necessary packages
-    command: yum -y install wget git net-tools bind-utils iptables-services bridge-utils bash-completion kexec-tools sos psacct
+    command: yum -y install wget git net-tools bind-utils iptables-services bridge-utils bash-completion kexec-tools
 
   - name: Ensure SELinux enabled
     lineinfile:
@@ -63,11 +94,12 @@
        - { key: 'SELINUX', value: 'enforcing' }
        - { key: 'SELINUXTYPE', value: 'targeted' }
 
-  - name: Set up docker-storage-setup file
-    shell: echo -e 'DEVS=/dev/{{ docker_device }}\nVG=docker-vg' > /etc/sysconfig/docker-storage-setup
-
   - name: Install correct docker version
-    yum: name="docker-1.12.6"
+    yum: name="docker-latest"
+
+  - name: Set up docker-storage-setup file
+    shell: echo -e 'DEVS=/dev/{{ docker_device }}\nVG=docker-vg\nDATA_SIZE=90%VG' > /etc/sysconfig/docker-storage-setup
+    when: "'master' not in inventory_hostname"
 
   - name: Enable and start docker
     service: name=docker state=started enabled=yes
@@ -88,6 +120,9 @@
 
   - name: Enable NetworkManager
     service: name="NetworkManager" enabled=yes
+
+  - name: Origin directory (for resolv.conf)
+    file: name="/etc/origin" state=directory owner=root group=root mode=755
 
   - name: Create Origin's resolv.conf
     file: name="/etc/origin/resolv.conf" state=touch
