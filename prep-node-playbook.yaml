@@ -40,39 +40,39 @@
      openshift_version: "3.6"
 
   tasks:
-#  - name: Ensure subscription-manager is installed
-#    yum: name="subscription-manager" state=latest
+  - name: Ensure subscription-manager is installed
+    yum: name="subscription-manager" state=latest
 
   - name: Verify if Master attached to proper pool already
     shell: subscription-manager list --consumed --pool-only|grep {{ master_pool }}
-    when: inventory_hostname | match("^master.*")
+    when: openshift_node_labels['region'] == 'master'
     ignore_errors: true
     register: master_pool_attached
 
   - name: Verify if Infra node is attached to proper pool already
     shell: subscription-manager list --consumed --pool-only|grep {{ infra_pool }}
-    when: inventory_hostname | match("^infra.*")
+    when: openshift_node_labels['region'] == 'infra'
     ignore_errors: true
     register: infra_pool_attached
 
   - name: Verify if App node attached to proper pool already
     shell: subscription-manager list --consumed --pool-only|grep {{ node_pool }}
-    when: inventory_hostname | match("^node.*")
+    when: openshift_node_labels['region'] == 'primary'
     ignore_errors: true
     register: node_pool_attached
 
   - name: Attach Master nodes to the appropriate pool-id
     shell: subscription-manager attach --pool={{ master_pool }}
-    when: inventory_hostname | match("^master.*") and master_pool_attached.rc != 0
+    when: openshift_node_labels['region'] == 'master'
 
 
   - name: Attach Infra nodes to the appropriate pool-id
     shell: subscription-manager attach --pool={{ infra_pool }}
-    when: inventory_hostname | match("^infra.*") and infra_pool_attached.rc != 0
+    when: openshift_node_labels['region'] == 'infra'
 
   - name: Attach App nodes to the appropriate pool-id
     shell: subscription-manager attach --pool={{ node_pool }}
-    when: inventory_hostname | match("^node.*") and node_pool_attached.rc != 0
+    when: openshift_node_labels['region'] == 'primary'
 
   - name: Disable all repos
     shell: subscription-manager repos --disable="*"
@@ -81,7 +81,18 @@
     shell: subscription-manager repos --enable="rhel-7-server-rpms" --enable="rhel-7-server-extras-rpms" --enable="rhel-7-server-ose-{{ openshift_version }}-rpms" --enable="rhel-7-fast-datapath-rpms"
 
   - name: Install necessary packages
-    command: yum -y install wget git net-tools bind-utils iptables-services bridge-utils bash-completion kexec-tools
+    yum: pkg={{ item }} state=installed
+    with_items:
+     - wget 
+     - git 
+     - net-tools 
+     - bind-utils 
+     - iptables-services 
+     - bridge-utils 
+     - bash-completion 
+     - kexec-tools
+     - sos
+     - psacct
 
   - name: Ensure SELinux enabled
     lineinfile:
