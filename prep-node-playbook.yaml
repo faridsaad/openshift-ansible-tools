@@ -37,26 +37,15 @@
 - hosts: all:!local
   gather_facts: yes
   vars:
-     docker_device: 'sde'
+     docker_device: 'xvdb'
 
   tasks:
-
-  - name: Verify docker-vg volume group exists
-    shell: "vgs {{ docker_vg }} --noheadings|awk '{print $1}'|tr -d '\n'"
-    register: cmd_docker_vg
 
   - name: Remove any subscriptions attached to RHSM by default
     command: "subscription-manager remove --all"
 
   - name: Attach nodes to the appropriate pool-id
     shell: subscription-manager attach --pool={{ openshift_pool }}
-
-  - name: ensure firewalld is stopped, disabled, and masked
-    systemd:
-      name: firewalld
-      state: stopped
-      enabled: no
-      masked: yes
 
   - name: Disable all repos
     shell: subscription-manager repos --disable="*"
@@ -127,6 +116,14 @@
     service: 
       name: "NetworkManager" 
       enabled: yes
+
+  - name: ensure firewalld is stopped, disabled, and masked
+    systemd:
+      name: firewalld
+      state: stopped
+      enabled: no
+      masked: yes
+
 
   - name: Restart to enable selinux and other changes
     command: /sbin/shutdown -r +1
