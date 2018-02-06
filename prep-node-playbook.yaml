@@ -11,12 +11,16 @@
 ##
 ## Obtain the pool ID for Openshift:
 ## ansible -i hosts OSEv3 -a 'subscription-manager list --available --matches="*Openshift*"'
+##
+## Variables sourced from inventory file:
+## -- openshift_release (we use a substring to convert v3.6 to 3.6 for example)
+## -- openshift_pool (subscription pool hash for openshift)
 ## 
 ## !!!!!!!!!!!!!!!!!
 ##
 ## prep-node-playbook.yaml: Quick playbook to prepare hosts for openshift-ansible deploy.
 ## 
-## - Fills in docker-device to create docker-storage-setup file with proper values. (defaults: /dev/sdf)
+## - Fills in docker volume group to create docker-storage-setup file with proper values. (defaults: docker-vg)
 ## - Install and enable NetworkManager package
 ## - Ensure SELinux is enabled
 ## - Optionally reboot at end (required to enable SELinux)
@@ -33,90 +37,80 @@
 - hosts: all:!local
   gather_facts: yes
   vars:
-     docker_device: vdb
-     master_pool: "8a85XXX"
-     infra_pool: "8a85XXX"
-     node_pool: "8a85XXX"
-     openshift_version: "3.6"
+     docker_device: 'sde'
 
   tasks:
-  - name: Ensure subscription-manager is installed
-    yum: name="subscription-manager" state=latest
 
-  - name: Verify if Master attached to proper pool already
-    shell: subscription-manager list --consumed --pool-only|grep {{ master_pool }}
-    when: openshift_node_labels['region'] == 'master'
-    ignore_errors: true
-    register: master_pool_attached
+  - name: Verify docker-vg volume group exists
+    shell: "vgs {{ docker_vg }} --noheadings|awk '{print $1}'|tr -d '\n'"
+    register: cmd_docker_vg
 
-  - name: Verify if Infra node is attached to proper pool already
-    shell: subscription-manager list --consumed --pool-only|grep {{ infra_pool }}
-    when: openshift_node_labels['region'] == 'infra'
-    ignore_errors: true
-    register: infra_pool_attached
+  - name: Remove any subscriptions attached to RHSM by default
+    command: "subscription-manager remove --all"
 
-  - name: Verify if App node attached to proper pool already
-    shell: subscription-manager list --consumed --pool-only|grep {{ node_pool }}
-    when: openshift_node_labels['region'] == 'primary'
-    ignore_errors: true
-    register: node_pool_attached
+  - name: Attach nodes to the appropriate pool-id
+    shell: subscription-manager attach --pool={{ openshift_pool }}
 
-  - name: Attach Master nodes to the appropriate pool-id
-    shell: subscription-manager attach --pool={{ master_pool }}
-    when: openshift_node_labels['region'] == 'master'
-
-
-  - name: Attach Infra nodes to the appropriate pool-id
-    shell: subscription-manager attach --pool={{ infra_pool }}
-    when: openshift_node_labels['region'] == 'infra'
-
-  - name: Attach App nodes to the appropriate pool-id
-    shell: subscription-manager attach --pool={{ node_pool }}
-    when: openshift_node_labels['region'] == 'primary'
+  - name: ensure firewalld is stopped, disabled, and masked
+    systemd:
+      name: firewalld
+      state: stopped
+      enabled: no
+      masked: yes
 
   - name: Disable all repos
     shell: subscription-manager repos --disable="*"
 
-  - name: Enable only required repos
-    shell: subscription-manager repos --enable="rhel-7-server-rpms" --enable="rhel-7-server-extras-rpms" --enable="rhel-7-server-ose-{{ openshift_version }}-rpms" --enable="rhel-7-fast-datapath-rpms"
+  - name: Enable only required repos for all nodes
+    shell: subscription-manager repos --enable="rhel-7-server-rpms" --enable="rhel-7-server-extras-rpms" --enable="rhel-7-server-ose-{{ openshift_release[1:4] }}-rpms" --enable="rhel-7-fast-datapath-rpms"
 
-  - name: Install necessary packages
-    yum: pkg={{ item }} state=installed
+  - name: install prerequisite yum packages
+    yum:
+      name: "{{ item }}"
+      state: latest 
     with_items:
-     - wget 
-     - git 
-     - net-tools 
-     - bind-utils 
-     - iptables-services 
-     - bridge-utils 
-     - bash-completion 
-     - kexec-tools
-     - sos
-     - psacct
+      - wget
+      - git
+      - net-tools
+      - bind-utils
+      - iptables-services
+      - bridge-utils
+      - bash-completion 
+      - kexec-tools 
+      - sos 
+      - psacct
 
-  - name: Ensure SELinux enabled
-    lineinfile:
-      dest: "/etc/sysconfig/selinux"
-      regexp: '^{{ item.key }}='
-      line: '{{ item.key }}={{ item.value }}'
-      state: present
-      create: yes
-    with_items:
-       - { key: 'SELINUX', value: 'enforcing' }
-       - { key: 'SELINUXTYPE', value: 'targeted' }
+  - name: ensure selinux is installed and enforcing
+    selinux:
+      state: enforcing
+      policy: targeted
+
+  - name: Install Openshift Utilities
+    yum: 
+      name: atomic-openshift-utils
+      state: latest
 
   - name: Install correct docker version
-    yum: name="docker-latest"
+    yum: 
+      name: "docker-1.12.6"
+      state: present
 
   - name: Set up docker-storage-setup file
     shell: echo -e 'DEVS=/dev/{{ docker_device }}\nVG=docker-vg\nDATA_SIZE=90%VG' > /etc/sysconfig/docker-storage-setup
-    when: "'master' not in inventory_hostname"
+
+  - name: run docker storage setup to initialize storage
+    shell: docker-storage-setup
 
   - name: Enable and start docker
-    service: name=docker state=started enabled=yes
+    service: 
+      name: docker 
+      state: started 
+      enabled: yes
 
   - name: Install NetworkManager
-    yum: name="NetworkManager" state=latest
+    yum: 
+      name: "NetworkManager" 
+      state: latest
 
   - name: Configure NetworkManager
     lineinfile:
@@ -130,15 +124,11 @@
     - 'NM_CONTROLLED'
 
   - name: Enable NetworkManager
-    service: name="NetworkManager" enabled=yes
+    service: 
+      name: "NetworkManager" 
+      enabled: yes
 
-  - name: Origin directory (for resolv.conf)
-    file: name="/etc/origin" state=directory owner=root group=root mode=755
-
-  - name: Create Origin's resolv.conf
-    file: name="/etc/origin/resolv.conf" state=touch
-
-  - name: Restart to enable
+  - name: Restart to enable selinux and other changes
     command: /sbin/shutdown -r +1
     async: 0
     poll: 0
